@@ -1,55 +1,26 @@
 import sys, pygame
 import numpy as np
 import math
-
+import cv2
 
 class Dijkstra:
-    def __init__(self,obstacles_x,obstacles_y,stepsize):
-        """
-        Initialize map for a star planning
-
-        obstacles_x: x position list of Obstacles [m]
-        obstacles_y: y position list of Obstacles [m]
-        stepsize: grid resolution [m]
-        """
-        self.min_x = None
-        self.min_y = None
-        self.max_x = None
-        self.max_y = None
-        self.x_width = None
-        self.y_width = None
-        self.obstacle_map = None
-        
-        self.robot_radius = None
-        self.stepsize=stepsize
-        self.calc_obstacle_map(obstacles_x, obstacles_y)
-        self.motion = self.get_motion_model()
+    def __init__(self, origin_x, origin_y, screen,img_matrix):
+        self.origin_x=origin_x
+        self.origin_y=origin_y
+        self.screen=screen
+        self.x_width=screen.get_width()
+        self.y_width=screen.get_height()
+        self.img=img_matrix
+        self.motion=self.get_motion_model()
 
     class Node:
-            def __init__(self, x, y, cost, parent_index):
-                self.x = x  # index of grid
-                self.y = y  # index of grid
-                self.cost = cost
-                # self.grid = grid
-                self.parent_index = parent_index  # index of previous Node
+        def __init__(self, x, y, cost, parent_index):
+            self.x = x  # index of grid
+            self.y = y  # index of grid
+            self.cost = cost
+            self.parent_index = parent_index  # index of previous Node
 
-            def __str__(self):
-                #when using print, it will print out the string below
-                return str(self.x) + "," + str(self.y) + "," + str(
-                    self.cost) + "," + str(self.parent_index)
-            
-    def calc_xy_index(self, position, minp):
-        return round((position - minp) / self.stepsize)
-
-    def calc_index(self, node):
-        '''
-            return node index by
-            1->2->3
-            4->5->6
-        '''
-        return (node.y - self.min_y) * self.x_width + (node.x - self.min_x)    
-    
-    def planning(self, start_x, start_y, goal_x, goal_y):
+    def planning(self, start_x, start_y, goal_x, goal_y,max_itertime):
         """
         dijkstra path search
 
@@ -57,96 +28,93 @@ class Dijkstra:
             start_x: start x position [m]
             start_y: start y position [m]
             goal_x: goal x position [m]
-            goal_x: goal x position [m]
+            goal_y: goal y position [m]
 
         output:
             return_x: x position list of the final path
             return_y: y position list of the final path
         """
-        start_node = self.Node(self.calc_xy_index(start_x, self.min_x),
-                                    self.calc_xy_index(start_y, self.min_y), 0.0, -1)
-        goal_node = self.Node(self.calc_xy_index(goal_x, self.min_x),
-                                    self.calc_xy_index(goal_y, self.min_y), 0.0, -1)
-        
+        start_node=self.Node(start_x,start_y,0,-1)
+        goal_node=self.Node(goal_x,goal_y,0,-1)
         open_set, closed_set = dict(), dict()
         open_set[self.calc_index(start_node)] = start_node
-
-        while True:
-            #pick the least cost node as current
-            less_cost_id = min(open_set, key=lambda o: open_set[o].cost)
-            current = open_set[less_cost_id]
-            #reach goal
-            if current.x == goal_node.x and current.y == goal_node.y:
-                print("Find goal")
-                goal_node.parent_index = current.parent_index
-                goal_node.cost = current.cost
+        for i in range(max_itertime):
+            current_id = min(open_set, key=lambda o: open_set[o].cost)
+            current_node = open_set[current_id]
+            # print("current id",current_id)
+            ''' find goal '''
+            if current_node.x == goal_node.x and current_node.y == goal_node.y:
+                print("Find goal with cost",current_node.cost)
+                goal_node.parent_index = current_node.parent_index
+                goal_node.cost = current_node.cost
                 break
-
             ''' Remove the item on open set '''
-            del open_set[less_cost_id]
-            
+            del open_set[current_id]
             ''' Add it to the closed set '''
-            closed_set[less_cost_id] = current
-
+            closed_set[current_id] = current_node
             ''' expand search grid based on motion model'''
             for move_x, move_y, move_cost in self.motion:
-                node = self.Node(current.x + move_x,
-                                 current.y + move_y,
-                                 current.cost + move_cost, less_cost_id)
+                node = self.Node(current_node.x + move_x,
+                                 current_node.y + move_y,
+                                 current_node.cost + move_cost, current_id)
                 node_id = self.calc_index(node)
-
+                #visited
                 if node_id in closed_set:
                     continue
-
                 if not self.verify_node(node):
                     continue
-
                 if node_id not in open_set:
-                    # Discover a new node
-                    open_set[node_id] = node  
+                    #Discover a new node
+                    open_set[node_id] = node
+                    rect=(node.x,node.y,1,1)
+                    pygame.draw.rect(screen,(255,0,0),rect)
+                    pygame.display.update()
                 else:
-                    if open_set[node_id].cost >= node.cost:
-                        # This path is the best until now. record it!
+                    #unvisited
+                    if node.cost < open_set[node_id].cost:
+                        #the cost and parent be changed while x,y keep the same
                         open_set[node_id] = node
-        
-        return_x, return_y = self.calc_final_path(goal_node, closed_set)
-
-        return return_x, return_y
+            pygame.draw.circle(screen,(0,0,255),start,2.5)
+            whether_quit()
+        path = self.calc_final_path(goal_node, closed_set)
+        self.draw_path(path,closed_set)
+        return path
     
     def calc_final_path(self, goal_node, closed_set):
-        # generate final course
-        return_x, return_y = [self.calc_position(goal_node.x, self.min_x)], [
-            self.calc_position(goal_node.y, self.min_y)]
+        path=[]
         parent_index = goal_node.parent_index
+        path.append(parent_index)
         while parent_index != -1:
-            n = closed_set[parent_index]
-            return_x.append(self.calc_position(n.x, self.min_x))
-            return_y.append(self.calc_position(n.y, self.min_y))
-            parent_index = n.parent_index
+            node = closed_set[parent_index]
+            parent_index = node.parent_index
+            path.append(parent_index)
+        path.pop()
+        return path   
+    
+    def calc_index(self, node):
+        '''
+            return node index by
+            1->2->3
+            4->5->6
+        '''
+        return node.y * self.x_width + node.x
 
-        return return_x, return_y
-    
-    def calc_position(self, index, minp):
-        pos = index * self.stepsize + minp
-        return pos
-    
     def verify_node(self, node):
-        px = self.calc_position(node.x, self.min_x)
-        py = self.calc_position(node.y, self.min_y)
-        #cross boundaries
-        if px < self.min_x:
+        if node.x < 0 or node.y < 0:
             return False
-        if py < self.min_y:
+        if node.x >= self.x_width or node.y >= self.y_width:
             return False
-        if px >= self.max_x:
-            return False
-        if py >= self.max_y:
-            return False
-        #cross obstacles
-        if self.obstacle_map[node.x][node.y]:
+        if self.img[node.y][node.x]==0:
             return False
         return True
     
+    def draw_path(self,path,closed_set):
+        for id in path:
+            node=closed_set[id]
+            rect=(node.x,node.y,2,2)
+            pygame.draw.rect(self.screen,(255,255,0),rect)
+        pygame.display.update()
+
     @staticmethod
     def get_motion_model():
         ''' motion model for obstacle '''
@@ -158,95 +126,57 @@ class Dijkstra:
                   [-1, 1, math.sqrt(2)],
                   [1, -1, math.sqrt(2)],
                   [1, 1, math.sqrt(2)]]
-
         return motion
-    
-    def calc_obstacle_map(self, ox, oy):
 
-        self.x_width = round((self.max_x - self.min_x) / self.resolution)
-        self.y_width = round((self.max_y - self.min_y) / self.resolution)
-        print("x_width:", self.x_width)
-        print("y_width:", self.y_width)
 
-        # obstacle map generation
-        self.obstacle_map = []
-        ''' Iterate over the x, y indices and setting then false '''
-        for _ in range(self.x_width):
-            row = []
-            for _ in range(self.y_width):
-                row.append(False)
-            self.obstacle_map.append(row)
-        ''' Iterate over x indices '''
-        for ix in range(self.x_width):
-            x = self.calc_position(ix, self.min_x)
-            for iy in range(self.y_width):
-                y = self.calc_position(iy, self.min_y)
-                ''' Iterate over obstacles' x and y coordinates '''
-                for iox, ioy in zip(ox, oy):
-                    ''' Calculate Euclidean distance between obstacle and current point '''
-                    d = math.hypot(iox - x, ioy - y)
-                    if d <= self.robot_radius:
-                        self.obstacle_map[ix][iy] = True
-                        break
 
-class Block(pygame.sprite.Sprite):
-    #this class define a pygame rectangle shape sprite 
-    def __init__(self, width, height,xpos,ypos,color=(255,255,255)):
-        super().__init__()#=pygame.sprite.Sprite.__init__(self)
-        self.rect=pygame.Rect(xpos,ypos,width,height)
-        self.color=color
-        self.image = pygame.Surface([width, height])
-        self.image.fill(color)
-
-class Circle(pygame.sprite.Sprite):
-    #this class define a circle shape sprite
-    def __init__(self, color, radius,pos):
-        super().__init__()
-        self.image = pygame.Surface([2*radius, 2*radius])
-        self.image.fill((0,0,0))
-        self.image.set_colorkey((0,0,0))
-        self.pos=pos
-        #When blitting this Surface onto a destination, any pixels that have the same color as 
-        # the colorkey will be transparent.
-        pygame.draw.circle(self.image, color,(radius,radius),radius)
-        # Fetch the rectangle object that has the dimensions of the image
-        # Update the position of this object by setting the values of rect.x and rect.y
-        self.rect = self.image.get_rect()
-        self.rect.centerx = pos[0]
-        self.rect.centery = pos[1]
-        
 def whether_quit():
     #this function use to determine if user push the close bottom of the window
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             sys.exit()
+def image_process(filepath):
+    img=cv2.imread(filepath,cv2.IMREAD_GRAYSCALE)
+    img=cv2.resize(img, (400, 300))
+    size=img.shape
+    for i in range(size[0]):
+        for j in range(size[1]):
+            if img[i][j]<250:
+                img[i][j]=0
+    return img
+
+def show_img_OpenCV(img):
+    # 顯示圖片，第一個參數表示視窗名稱，第二個參數就是你的圖片。
+    cv2.imshow('My Image', img)
+
+    # 按下任意鍵則關閉所有視窗
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
 
 if __name__ == '__main__': 
     pygame.init()
     pygame.display.set_caption('RRTstar')
-    SCREEN_WIDTH=800
-    SCREEN_HIGHT=600
+    SCREEN_WIDTH=400
+    SCREEN_HIGHT=300
     screen = pygame.display.set_mode((SCREEN_WIDTH,SCREEN_HIGHT))
     screen.fill((0,0,0))
     running=True
-        #---------------------setting start and end point
-    x0,y0=50,50
-    START_P=np.array([x0,y0])
-    x_end,y_end=550,550
-    END_P=np.array([x_end,y_end])
-    ORIGION=Circle((0,255,0),10,START_P)
-    END_POINT=Circle((255,0,0),10,END_P)
-    point_list = pygame.sprite.Group()
-    point_list.add(ORIGION)
-    point_list.add(END_POINT)
-    #---------------------setting block 
-    BLOCK1=Block(100,200,150,0)
-    BLOCK2=Block(100,200,300,400)
-    BLOCK3=Block(300,100,350,250)
-    block_list = pygame.sprite.Group()
-    block_list.add(BLOCK1)
-    block_list.add(BLOCK2)
+    filepath="./Dijkstra/obstacle.png"
+    img_matrix=image_process(filepath)
+    # show_img_OpenCV(img_matrix)
+    background=pygame.surfarray.make_surface(np.transpose(img_matrix))
+    dijkstra=Dijkstra(0,0,screen,img_matrix)
     idx=0
+    start=np.array([80,100])
+    goal=np.array([250,250])
     while running:
-        screen.fill((0,0,0))
+        if idx<1:
+            screen.blit(background, (0, 0))
+            rect_gaol=(goal[0],goal[1],5,5)
+            rect_start=(start[0],start[1],5,5)
+            pygame.draw.circle(screen,(0,255,0),goal,2.5)
+            pygame.draw.circle(screen,(0,0,255),start,2.5)
+            pygame.display.update()
+            path=dijkstra.planning(start[0],start[1],goal[0],goal[1],100000)
+            idx=1   
         whether_quit()
