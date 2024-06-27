@@ -24,7 +24,7 @@ execute by
 ```
 $ ./ filename
 ```
-### detail of each programm
+### detail of each programme
 1. cali.cpp  
    - finding intrinsic parameters of camera  
 2. rectify.cpp  
