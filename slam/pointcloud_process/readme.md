@@ -24,7 +24,7 @@ execute by
 ```
 $ ./ filename
 ```
-### detail of each programm
+### detail of each programme
 1. joinMap.cpp  
    - given depth pictures, color pictures, and camera postion to build a point cloud map  
 2. pcdviewer.cpp  
