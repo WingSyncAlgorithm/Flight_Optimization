@@ -28,6 +28,6 @@ $ ./ filename
 1.cali.cpp  
   finding intrinsic parameters of camera  
 2.rectify.cpp  
-  rectify the pictures captured by camera
-3.match.cpp
+  rectify the pictures captured by camera  
+3.match.cpp  
   build depth picture from rectified pictures
